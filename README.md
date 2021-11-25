@@ -5,7 +5,7 @@ Move logs from Azure Log Analytics Workspace to Azure Storage Account in batches
 
 1. Download the Tool
 
-   <a id="historic" href="https://github.com/andedevsecops/HistoricDataExport/archive/refs/heads/main.zip">Download Tool</a>  
+   <a id="historic" href="https://github.com/sreedharande/MoveLogs2StorageAccount/archive/refs/heads/main.zip">Download Tool</a>  
  
 2. Extract the folder and open script files either in Visual Studio Code or PowerShell  
 

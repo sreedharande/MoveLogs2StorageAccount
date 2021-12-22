@@ -28,7 +28,7 @@ PARAM (
     [Parameter(Mandatory=$true)] $TableName,
     [Parameter(Mandatory=$true)] $startperiod,
     [Parameter(Mandatory=$true)] $endperiod,    
-    $HoursInterval = 12         
+    [Parameter(Mandatory=$true)] $HoursInterval       
 )
 
 function Write-Log {
@@ -149,7 +149,7 @@ Function Write-JsonToLocal {
     $BlobFileName = '{0}_{1}_{2}.json' -f $TableName, $QueryStartPeriod, $QueryEndPeriod 
     $BlobFilePath = "$PSScriptRoot\$BlobFileName"
     
-    $LogAnalyticsQueryResults | ConvertTo-Json -depth 100 | Set-Content $BlobFilePath
+    $LogAnalyticsQueryResults | Set-Content $BlobFilePath
     
     return $BlobFilePath
 }
@@ -261,7 +261,7 @@ DO {
                 
         $ResultsArray = @() 
         foreach ($rowData in $LaLogs) {            
-            $ResultsArray += $rowData_json
+            $ResultsArray += $rowData | ConvertTo-Json -Depth 100
         }        
         if ($HistoricExportDecision -eq 0) {
             $JoinedRows = $ResultsArray -join ","      

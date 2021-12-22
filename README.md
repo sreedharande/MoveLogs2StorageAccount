@@ -17,15 +17,18 @@ Move logs from Azure Log Analytics Workspace to Azure Storage Account in batches
    
 3. Enter the parameters  
 
-	$LogAnalyticsWorkspaceName = "MyWorkspace",  
-    $LogAnalyticsResourceGroup = "MyRG",  
-    $StorageAccountName = "MyStorageAccountName",  
-    $StorageAccountResourceGroup = "MyStorageAccountResourceGroup",      
-    $TableName = "SentinelHealth",  
-    $startperiod = "2021-11-13 00:00:00",  
-    $endperiod = "2021-11-15 00:00:00",  
+	LogAnalyticsWorkspaceName = "MyWorkspace",  
+    LogAnalyticsResourceGroup = "MyRG",  
+    StorageAccountName = "MyStorageAccountName",  
+    StorageAccountResourceGroup = "MyStorageAccountResourceGroup",      
+    TableName = "SentinelHealth",  
+    startperiod = "2021-11-13 00:00:00",  
+    endperiod = "2021-11-15 00:00:00",  
+	HoursInterval = 2 (1 - 24)
 	
 4. Script will create container with table name and uploads JSON files
 
 5. Script is designed around the limitations of Azure Log Analytics workspace like the number of records returned to the client to 500,000, and the overall data size for those records to 64 MB. When either of these limits is exceeded, the query fails with a "partial query failure". Exceeding overall data size will generate an exception with the message  
    - Script queries the data for every 12 hours and generates JSON file from Start period to End period
+   
+6. Script will generate log file in your local directory `"HistoricDataMigration_<<TimeStamp>>.csv"`

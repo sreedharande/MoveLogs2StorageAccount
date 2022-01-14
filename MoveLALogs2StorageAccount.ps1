@@ -70,7 +70,7 @@ function Write-Log {
     }    
 }
 
-function CheckModules {
+function Get-RequiredModules {
     <#
     .DESCRIPTION 
     Get-Required is used to install and then import a specified PowerShell module.
@@ -85,7 +85,8 @@ function CheckModules {
     )
     
     try {
-        $installedModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue
+        $installedModule = Get-InstalledModule -Name $Module -ErrorAction SilentlyContinue       
+
         if ($null -eq $installedModule) {
             Write-Log -Message "The $Module PowerShell module was not found" -LogFileName $LogFileName -Severity Warning
             #check for Admin Privleges
@@ -96,14 +97,43 @@ function CheckModules {
                 Write-Log -Message "Can not install the $Module module. You are not running as Administrator" -LogFileName $LogFileName -Severity Warning
                 Write-Log -Message "Installing $Module module to current user Scope" -LogFileName $LogFileName -Severity Warning
                 
-                Install-Module -Name $Module -Scope CurrentUser -AllowClobber -Force
+                Install-Module -Name $Module -Scope CurrentUser -Repository PSGallery -Force -AllowClobber
                 Import-Module -Name $Module -Force
             }
             else {
                 #Admin, install to all users																		   
                 Write-Log -Message "Installing the $Module module to all users" -LogFileName $LogFileName -Severity Warning
-                Install-Module -Name $Module -AllowClobber -Force -ErrorAction continue
-                Import-Module -Name $Module -Force -ErrorAction continue
+                Install-Module -Name $Module -Repository PSGallery -Force -AllowClobber
+                Import-Module -Name $Module -Force
+            }
+        }
+        else {
+            Write-Log -Message "Checking updates for module $Module" -LogFileName $LogFileName -Severity Information
+            $versions = Find-Module $Module -AllVersions
+            $latestVersions = ($versions | Measure-Object -Property Version -Maximum).Maximum.ToString()
+            $currentVersion = (Get-InstalledModule | Where-Object {$_.Name -eq $Module}).Version.ToString()
+            if ($currentVersion -ne $latestVersions) {
+                #check for Admin Privleges
+                $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+
+                if (-not ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) {
+                    #Not an Admin, install to current user            
+                    Write-Log -Message "Can not update the $Module module. You are not running as Administrator" -LogFileName $LogFileName -Severity Warning
+                    Write-Log -Message "Updating $Module module to current user Scope" -LogFileName $LogFileName -Severity Warning
+                    
+                    Install-Module -Name $Module -Scope CurrentUser -Repository PSGallery -Force -AllowClobber
+                    Import-Module -Name $Module -Force
+                }
+                else {
+                    #Admin, install to all users																		   
+                    Write-Log -Message "Updating the $Module module to all users" -LogFileName $LogFileName -Severity Warning
+                    Install-Module -Name $Module -Repository PSGallery -Force -AllowClobber
+                    Import-Module -Name $Module -Force
+                }
+            }
+            else {
+                Write-Log -Message "Importing module $Module" -LogFileName $LogFileName -Severity Information
+                Import-Module -Name $Module -Force
             }
         }
         # Install-Module will obtain the module from the gallery and install it on your local machine, making it available for use.
@@ -188,9 +218,9 @@ if ($host.Version.Major -lt 5) {
     exit
 }
 
-CheckModules("Az.Resources")
-CheckModules("Az.OperationalInsights")
-CheckModules("Az.Storage")
+Get-RequiredModules("Az.Resources")
+Get-RequiredModules("Az.OperationalInsights")
+Get-RequiredModules("Az.Storage")
 
 
 $TimeStamp = Get-Date -Format yyyyMMdd_HHmmss
@@ -207,16 +237,6 @@ if(!$context){
     $context = Get-AzContext
 }
 
-$SubscriptionId = $context.Subscription.Id
-
-$HistoricExportQuestion = "Do you want to ingest historic data to Azure Data Explorer Table or query directly Storage Account using 'External' command?"
-$HistoricExportQuestionChoices = New-Object Collections.ObjectModel.Collection[Management.Automation.Host.ChoiceDescription]
-$HistoricExportQuestionChoices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList '&Azure Data Explorer'))
-$HistoricExportQuestionChoices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList '&Storage Account - External Command'))
-
-$HistoricExportDecision = $Host.UI.PromptForChoice($title, $HistoricExportQuestion, $HistoricExportQuestionChoices, 1)
-
-
 try {
     $WorkspaceObject = Get-AzOperationalInsightsWorkspace -Name $LogAnalyticsWorkspaceName -ResourceGroupName $LogAnalyticsResourceGroup -DefaultProfile $context 
     $LogAnalyticsLocation = $WorkspaceObject.Location
@@ -232,7 +252,7 @@ catch {
 $isStorageAccountExists = Get-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroup `
                                                   -Name $StorageAccountName
 if($null -eq $isStorageAccountExists) {
-    New-AzStorageAccount -ResourceGroupName $resourceGroup `
+    New-AzStorageAccount -ResourceGroupName $StorageAccountResourceGroup `
                             -Name $StorageAccountName `
                             -Location $LogAnalyticsLocation `
                             -SkuName Standard_RAGRS `
@@ -262,15 +282,10 @@ DO {
         $ResultsArray = @() 
         foreach ($rowData in $LaLogs) {            
             $ResultsArray += $rowData | ConvertTo-Json -Depth 100
-        }        
-        if ($HistoricExportDecision -eq 0) {
-            $JoinedRows = $ResultsArray -join ","      
-            $LogAnalyticsQueryResults = '{"records": [' + $JoinedRows + ']}'
-        }
-        else {
-            $JoinedRows = $ResultsArray -join "`r`n"
-            $LogAnalyticsQueryResults = $JoinedRows
-        }        
+        }       
+        
+        $JoinedRows = $ResultsArray -join "`r`n"
+        $LogAnalyticsQueryResults = $JoinedRows               
         
         $LocalBlobFile = Write-JsonToLocal -LogAnalyticsQueryResults $LogAnalyticsQueryResults -QueryStartPeriod $startperiod -QueryEndPeriod $endperiod
         $BlobUploadStatus = Write-AzureStorageAccountContainer -StorageAcctContext $StorageAccountContext -StorageBlob $LocalBlobFile

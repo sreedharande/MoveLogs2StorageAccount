@@ -140,7 +140,7 @@ function Get-RequiredModules {
         # Import-Module will bring the module and its functions into your current powershell session, if the module is installed.  
     }
     catch {
-        Write-Log -Message "An error occurred in Get-RequiredModules() method" -LogFileName $LogFileName -Severity Error																			
+        Write-Log -Message "An error occurred in Get-RequiredModules() method: $($_)" -LogFileName $LogFileName -Severity Error																			
         exit
     }
 }

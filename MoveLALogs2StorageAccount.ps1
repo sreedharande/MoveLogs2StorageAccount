@@ -108,26 +108,29 @@ function Get-RequiredModules {
             }
         }
         else {
-            Write-Log -Message "Checking updates for module $Module" -LogFileName $LogFileName -Severity Information
-            $versions = Find-Module $Module -AllVersions
-            $latestVersions = ($versions | Measure-Object -Property Version -Maximum).Maximum.ToString()
-            $currentVersion = (Get-InstalledModule | Where-Object {$_.Name -eq $Module}).Version.ToString()
-            if ($currentVersion -ne $latestVersions) {
-                #check for Admin Privleges
-                $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+            if ($UpdateAzModules) {
+                Write-Log -Message "Checking updates for module $Module" -LogFileName $LogFileName -Severity Information
+                $currentVersion = [Version](Get-InstalledModule | Where-Object {$_.Name -eq $Module}).Version
+                # Get latest version from gallery
+                $latestVersion = [Version](Find-Module -Name $Module).Version
+                if ($currentVersion -ne $latestVersion) {
+                    #check for Admin Privleges
+                    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 
-                if (-not ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) {
-                    #Not an Admin, install to current user            
-                    Write-Log -Message "Can not update the $Module module. You are not running as Administrator" -LogFileName $LogFileName -Severity Warning
-                    Write-Log -Message "Updating $Module module to current user Scope" -LogFileName $LogFileName -Severity Warning
-                    
-                    Install-Module -Name $Module -Scope CurrentUser -Repository PSGallery -Force -AllowClobber
-                    Import-Module -Name $Module -Force
+                    if (-not ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))) {
+                        #install to current user            
+                        Write-Log -Message "Can not update the $Module module. You are not running as Administrator" -LogFileName $LogFileName -Severity Warning
+                        Write-Log -Message "Updating $Module from [$currentVersion] to [$latestVersion] to current user Scope" -LogFileName $LogFileName -Severity Warning
+                        Update-Module -Name $Module -RequiredVersion $latestVersion -Force
+                    }
+                    else {
+                        #Admin - Install to all users																		   
+                        Write-Log -Message "Updating $Module from [$currentVersion] to [$latestVersion] to all users" -LogFileName $LogFileName -Severity Warning
+                        Update-Module -Name $Module -RequiredVersion $latestVersion -Force
+                    }
                 }
                 else {
-                    #Admin, install to all users																		   
-                    Write-Log -Message "Updating the $Module module to all users" -LogFileName $LogFileName -Severity Warning
-                    Install-Module -Name $Module -Repository PSGallery -Force -AllowClobber
+                    Write-Log -Message "Importing module $Module" -LogFileName $LogFileName -Severity Information
                     Import-Module -Name $Module -Force
                 }
             }
@@ -140,8 +143,7 @@ function Get-RequiredModules {
         # Import-Module will bring the module and its functions into your current powershell session, if the module is installed.  
     }
     catch {
-        Write-Log -Message "An error occurred in Get-RequiredModules() method: $($_)" -LogFileName $LogFileName -Severity Error																			
-        exit
+        Write-Log -Message "An error occurred in Get-RequiredModules() method - $($_)" -LogFileName $LogFileName -Severity Error        
     }
 }
 
@@ -216,6 +218,20 @@ Function Write-AzureStorageAccountContainer {
 if ($host.Version.Major -lt 5) {
     Write-Log "Supported PowerShell version for this script is 5 or above" -LogFileName $LogFileName -Severity Error    
     exit
+}
+
+$AzModulesQuestion = "Do you want to update required Az Modules to latest version?"
+$AzModulesQuestionChoices = New-Object Collections.ObjectModel.Collection[Management.Automation.Host.ChoiceDescription]
+$AzModulesQuestionChoices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList '&Yes'))
+$AzModulesQuestionChoices.Add((New-Object Management.Automation.Host.ChoiceDescription -ArgumentList '&No'))
+
+$AzModulesQuestionDecision = $Host.UI.PromptForChoice($title, $AzModulesQuestion, $AzModulesQuestionChoices, 1)
+
+if ($AzModulesQuestionDecision -eq 0) {
+    $UpdateAzModules = $true
+}
+else {
+    $UpdateAzModules = $false
 }
 
 Get-RequiredModules("Az.Resources")
@@ -293,14 +309,14 @@ DO {
         if ($BlobUploadStatus) {
             Remove-Item $LocalBlobFile -Force
             $startperiod = $startperiod.AddHours($HoursInterval)
-        }             
+        }              
     }
     catch {        
         Write-Log -Message "Error in historic data transfer from $TableName between $startperiod to $endperiod" -LogFileName $LogFileName -Severity Error
         Write-Log -Message "Error : $($_)" -LogFileName $LogFileName -Severity Error        
     }   
             
-} While ($startperiod -lt $endperiod)
+} While ($startperiod -gt $endperiod)
 
 $transferEndTime = Get-Date
 $totalTransferTime = $transferEndTime - $transferStartTime
